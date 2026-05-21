@@ -1,97 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { GeocoderAutocomplete } from "@geoapify/geocoder-autocomplete";
-import "@geoapify/geocoder-autocomplete/styles/minimal.css";
-
-const geoapifyApiKey = import.meta.env.VITE_GEOAPIFY_API_KEY;
-
-function PinIcon({ size = 18 }) {
-  return (
-    <svg
-      aria-hidden="true"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
-      <circle cx="12" cy="10" r="3" />
-    </svg>
-  );
-}
-
-function LocationAutocomplete({ placeholder, value, onChange }) {
-  const containerRef = useRef(null);
-  const autocompleteRef = useRef(null);
-  const onChangeRef = useRef(onChange);
-
-  useEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-
-    if (!container || !geoapifyApiKey) {
-      return undefined;
-    }
-
-    const autocomplete = new GeocoderAutocomplete(
-      container,
-      geoapifyApiKey,
-      {
-        placeholder,
-        lang: "en",
-        limit: 5
-      }
-    );
-
-    autocompleteRef.current = autocomplete;
-
-    const handleSelect = (feature) => {
-      const formatted = feature?.properties?.formatted;
-      onChangeRef.current(formatted || autocomplete.getValue());
-    };
-
-    const handleInput = () => {
-      onChangeRef.current(autocomplete.getValue());
-    };
-
-    autocomplete.on("select", handleSelect);
-    container.addEventListener("input", handleInput);
-
-    return () => {
-      autocomplete.off("select", handleSelect);
-      container.removeEventListener("input", handleInput);
-      autocompleteRef.current = null;
-      container.innerHTML = "";
-    };
-  }, [placeholder]);
-
-  useEffect(() => {
-    const autocomplete = autocompleteRef.current;
-
-    if (autocomplete && autocomplete.getValue() !== value) {
-      autocomplete.setValue(value);
-    }
-  }, [value]);
-
-  if (!geoapifyApiKey) {
-    return (
-      <input
-        style={locationFallbackInputStyle}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    );
-  }
-
-  return <div ref={containerRef} style={autocompleteContainerStyle} />;
-}
+import { useState } from "react";
 
 function App() {
   const [routePlan, setRoutePlan] = useState(null);
@@ -108,56 +15,8 @@ function App() {
   const [jsonInput, setJsonInput] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [promptStatus, setPromptStatus] = useState("");
-  const [jsonStatus, setJsonStatus] = useState("");
-  const locationStatusTimeoutRef = useRef(null);
-  const locationRequestIdRef = useRef(0);
-
-  useEffect(() => {
-    return () => {
-      if (locationStatusTimeoutRef.current) {
-        clearTimeout(locationStatusTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  function clearLocationStatus() {
-    if (locationStatusTimeoutRef.current) {
-      clearTimeout(locationStatusTimeoutRef.current);
-      locationStatusTimeoutRef.current = null;
-    }
-
-    setLocationStatus("");
-  }
-
-  function setTemporaryLocationStatus(message) {
-    clearLocationStatus();
-    setLocationStatus(message);
-    locationStatusTimeoutRef.current = setTimeout(() => {
-      setLocationStatus("");
-      locationStatusTimeoutRef.current = null;
-    }, 2500);
-  }
-
-  function handleStartChange(nextStart) {
-    locationRequestIdRef.current += 1;
-    setStart(nextStart);
-    setErrorMessage("");
-    clearLocationStatus();
-  }
-
-  function handleRouteTypeChange(nextRouteType) {
-    locationRequestIdRef.current += 1;
-    setRouteType(nextRouteType);
-    setRoutePlan(null);
-    setErrorMessage("");
-    clearLocationStatus();
-  }
 
   function useCurrentLocation() {
-    const requestId = locationRequestIdRef.current + 1;
-    locationRequestIdRef.current = requestId;
-    clearLocationStatus();
-
     if (!navigator.geolocation) {
       setLocationStatus("Current location is not supported.");
       return;
@@ -167,21 +26,13 @@ function App() {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        if (requestId !== locationRequestIdRef.current) {
-          return;
-        }
-
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         setStart(`${lat},${lng}`);
-        setTemporaryLocationStatus("Current location added.");
+        setLocationStatus("Current location added.");
         setErrorMessage("");
       },
       () => {
-        if (requestId !== locationRequestIdRef.current) {
-          return;
-        }
-
         setLocationStatus("Could not get current location.");
       }
     );
@@ -219,7 +70,6 @@ function App() {
 
     setErrorMessage("");
     setCopyStatus("");
-    setJsonStatus("");
 
     const destination = routeType === "loop" ? start : end;
 
@@ -339,33 +189,19 @@ Do not include any explanation before or after the code block.
 `.trim();
 
     setChatGptPrompt(prompt);
-    setPromptStatus("Prompt ready.");
+    setPromptStatus(`Prompt updated at ${new Date().toLocaleTimeString()}`);
     setJsonInput("");
     setRoutePlan(null);
   }
 
   async function copyPrompt() {
-    if (!chatGptPrompt) {
-      setCopyStatus("Generate the AI prompt first.");
-      return;
-    }
+    if (!chatGptPrompt) return;
 
     try {
       await navigator.clipboard.writeText(chatGptPrompt);
       setCopyStatus("Prompt copied.");
     } catch {
       setCopyStatus("Could not copy automatically. Select and copy manually.");
-    }
-  }
-
-  async function pasteJsonFromClipboard() {
-    try {
-      const clipboardText = await navigator.clipboard.readText();
-      setJsonInput(clipboardText);
-      setJsonStatus("AI JSON pasted.");
-      setErrorMessage("");
-    } catch {
-      setJsonStatus("Could not read clipboard. Use Advanced / Debug to paste AI JSON manually.");
     }
   }
 
@@ -391,7 +227,7 @@ Do not include any explanation before or after the code block.
     try {
       parsed = JSON.parse(cleanJsonInput(jsonInput));
     } catch {
-      setErrorMessage("Invalid AI JSON. Paste only the JSON response from your AI tool.");
+      setErrorMessage("Invalid JSON. Paste only the JSON response from ChatGPT.");
       setRoutePlan(null);
       return;
     }
@@ -506,79 +342,55 @@ Do not include any explanation before or after the code block.
   return (
     <div style={pageStyle}>
       <div style={cardStyle}>
-        <div style={appHeaderStyle}>
-          <div style={appIconStyle}>
-            <PinIcon size={18} />
-          </div>
-          <h1 style={appTitleStyle}>Route Planner</h1>
-        </div>
+        <h1 style={titleStyle}>Route Planner</h1>
+        <p style={subtitleStyle}>
+          Build a route prompt, paste ChatGPT JSON, and launch in Google Maps.
+        </p>
 
-        <div style={routeTypeRowStyle}>
-          <div style={routeTypeLabelStyle}>Route Type</div>
-          <div style={segmentedControlStyle}>
-            <button
-              type="button"
-              style={{
-                ...segmentButtonStyle,
-                ...(routeType === "point" ? segmentButtonActiveStyle : {})
-              }}
-              onClick={() => {
-                handleRouteTypeChange("point");
-              }}
-            >
-              Point to Point
-            </button>
-            <button
-              type="button"
-              style={{
-                ...segmentButtonStyle,
-                ...(routeType === "loop" ? segmentButtonActiveStyle : {})
-              }}
-              onClick={() => {
-                handleRouteTypeChange("loop");
-              }}
-            >
-              Loop
-            </button>
-          </div>
-        </div>
+        <label style={labelStyle}>Route Type</label>
+        <select
+          style={inputStyle}
+          value={routeType}
+          onChange={(e) => {
+            setRouteType(e.target.value);
+            setRoutePlan(null);
+            setErrorMessage("");
+          }}
+        >
+          <option value="point">Point to point</option>
+          <option value="loop">Loop back to start</option>
+        </select>
 
-        <div style={locationRowStyle}>
-          <label style={locationLabelStyle}>Start Point</label>
-          <div style={locationInputWrapStyle}>
-            <LocationAutocomplete
-              placeholder="Enter start location"
-              value={start}
-              onChange={handleStartChange}
-            />
-          </div>
-          <button
-            type="button"
-            style={iconButtonStyle}
-            onClick={useCurrentLocation}
-            aria-label="Use current location"
-            title="Use current location"
-          >
-            <PinIcon size={16} />
-          </button>
-        </div>
+        <label style={labelStyle}>Start Location</label>
+        <input
+          style={inputStyle}
+          placeholder="Enter start location"
+          value={start}
+          onChange={(e) => {
+            setStart(e.target.value);
+            setErrorMessage("");
+          }}
+        />
+
+        <button style={secondaryButtonStyle} onClick={useCurrentLocation}>
+          Use Current Location
+        </button>
 
         {locationStatus && <div style={statusStyle}>{locationStatus}</div>}
 
         {routeType === "point" && (
-          <div style={locationRowStyle}>
-            <label style={locationLabelStyle}>End Point</label>
-            <div style={locationInputWrapStyle}>
-              <LocationAutocomplete
-                placeholder="Enter destination"
-                value={end}
-                onChange={(nextEnd) => {
-                  setEnd(nextEnd);
-                  setErrorMessage("");
-                }}
-              />
-            </div>
-          </div>
+          <>
+            <label style={labelStyle}>End Location</label>
+            <input
+              style={inputStyle}
+              placeholder="Enter destination"
+              value={end}
+              onChange={(e) => {
+                setEnd(e.target.value);
+                setErrorMessage("");
+              }}
+            />
+          </>
         )}
 
         {routeType === "loop" && (
@@ -587,104 +399,84 @@ Do not include any explanation before or after the code block.
           </div>
         )}
 
-        <div style={controlGridStyle}>
-          <label style={fieldStyle}>
-            <span style={compactLabelStyle}>Time</span>
-            <select
-              style={compactInputStyle}
-              value={availableTime}
-              onChange={(e) => setAvailableTime(e.target.value)}
-            >
-              <option value="1 hour">1 hour</option>
-              <option value="2 hours">2 hours</option>
-              <option value="3 hours">3 hours</option>
-              <option value="half day">Half day</option>
-            </select>
-          </label>
+        <label style={labelStyle}>Available Time</label>
+        <select
+          style={inputStyle}
+          value={availableTime}
+          onChange={(e) => setAvailableTime(e.target.value)}
+        >
+          <option value="1 hour">1 hour</option>
+          <option value="2 hours">2 hours</option>
+          <option value="3 hours">3 hours</option>
+          <option value="half day">Half day</option>
+        </select>
 
-          <label style={fieldStyle}>
-            <span style={compactLabelStyle}>Mode</span>
-            <select
-              style={compactInputStyle}
-              value={travelMode}
-              onChange={(e) => setTravelMode(e.target.value)}
-            >
-              <option value="walking">Walking</option>
-              <option value="driving">Driving</option>
-            </select>
-          </label>
-        </div>
+        <label style={labelStyle}>Travel Mode</label>
+        <select
+          style={inputStyle}
+          value={travelMode}
+          onChange={(e) => setTravelMode(e.target.value)}
+        >
+          <option value="walking">Walking</option>
+          <option value="driving">Driving</option>
+        </select>
 
-        <div style={controlGridStyle}>
-          <label style={fieldStyle}>
-            <span style={compactLabelStyle}>Energy</span>
-            <select
-              style={compactInputStyle}
-              value={energyLevel}
-              onChange={(e) => setEnergyLevel(e.target.value)}
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
+        <label style={labelStyle}>Energy Level</label>
+        <select
+          style={inputStyle}
+          value={energyLevel}
+          onChange={(e) => setEnergyLevel(e.target.value)}
+        >
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
 
-          <label style={fieldStyle}>
-            <span style={compactLabelStyle}>Style</span>
-            <select
-              style={compactInputStyle}
-              value={routeStyle}
-              onChange={(e) => setRouteStyle(e.target.value)}
-            >
-              <option value="scenic">Scenic</option>
-              <option value="historic">Historic</option>
-              <option value="efficient">Efficient but interesting</option>
-              <option value="food">Food-friendly</option>
-            </select>
-          </label>
-        </div>
+        <label style={labelStyle}>Route Style</label>
+        <select
+          style={inputStyle}
+          value={routeStyle}
+          onChange={(e) => setRouteStyle(e.target.value)}
+        >
+          <option value="scenic">Scenic</option>
+          <option value="historic">Historic</option>
+          <option value="efficient">Efficient but interesting</option>
+          <option value="food">Food-friendly</option>
+        </select>
 
         {errorMessage && <div style={errorStyle}>{errorMessage}</div>}
 
-        <button style={primaryButtonStyle} onClick={generateChatGptPrompt}>
-          Step 1: Generate AI Prompt
+        <button style={buttonStyle} onClick={generateChatGptPrompt}>
+          Generate ChatGPT Prompt
         </button>
 
-        {promptStatus && <div style={statusStyle}>{promptStatus}</div>}
-
-        <button style={secondaryButtonStyle} onClick={copyPrompt}>
-          Step 2: Copy Prompt
-        </button>
-
-        {copyStatus && <div style={statusStyle}>{copyStatus}</div>}
-
-        <button style={secondaryButtonStyle} onClick={pasteJsonFromClipboard}>
-          Step 3: Paste AI JSON from Clipboard
-        </button>
-
-        {jsonStatus && <div style={statusStyle}>{jsonStatus}</div>}
-
-        <button style={finalButtonStyle} onClick={buildRouteFromJson}>
-          Step 4: Build Route
-        </button>
-
-        <details style={detailsStyle}>
-          <summary style={summaryStyle}>Advanced / Debug</summary>
+        {chatGptPrompt && (
           <div style={panelStyle}>
-            <h2 style={panelTitleStyle}>Generated AI Prompt</h2>
+            <h2 style={panelTitleStyle}>ChatGPT Prompt</h2>
+            {promptStatus && <div style={statusStyle}>{promptStatus}</div>}
             <textarea style={textareaStyle} value={chatGptPrompt} readOnly />
-            <h2 style={panelTitleStyle}>Pasted AI JSON</h2>
-            <textarea
-              style={textareaStyle}
-              placeholder="Paste AI JSON response here"
-              value={jsonInput}
-              onChange={(e) => {
-                setJsonInput(e.target.value);
-                setErrorMessage("");
-              }}
-            />
+            <button style={secondaryButtonStyle} onClick={copyPrompt}>
+              Copy Prompt
+            </button>
+            {copyStatus && <div style={statusStyle}>{copyStatus}</div>}
           </div>
-        </details>
+        )}
+
+        <div style={panelStyle}>
+          <h2 style={panelTitleStyle}>Paste ChatGPT Route JSON</h2>
+          <textarea
+            style={textareaStyle}
+            placeholder="Paste JSON response here"
+            value={jsonInput}
+            onChange={(e) => {
+              setJsonInput(e.target.value);
+              setErrorMessage("");
+            }}
+          />
+          <button style={buttonStyle} onClick={buildRouteFromJson}>
+            Build Route from JSON
+          </button>
+        </div>
 
         <button style={sampleButtonStyle} onClick={generateSampleRoutePlan}>
           Use Sample Route Instead
@@ -695,7 +487,7 @@ Do not include any explanation before or after the code block.
             <div style={resultHeaderStyle}>
               <h2 style={{ margin: 0 }}>{routePlan.title}</h2>
               <div style={badgeStyle}>
-                {routePlan.summary.includes("sample") ? "Sample" : "AI"}
+                {routePlan.summary.includes("sample") ? "Sample" : "ChatGPT"}
               </div>
             </div>
 
@@ -778,8 +570,8 @@ Do not include any explanation before or after the code block.
 
 const pageStyle = {
   minHeight: "100vh",
-  background: "#fff7ed",
-  padding: "12px",
+  background: "#f4f4f5",
+  padding: "20px",
   fontFamily: "Arial, sans-serif"
 };
 
@@ -787,163 +579,37 @@ const cardStyle = {
   maxWidth: "540px",
   margin: "0 auto",
   background: "white",
-  borderRadius: "18px",
-  padding: "16px",
-  boxShadow: "0 14px 36px rgba(154, 52, 18, 0.1)",
-  textAlign: "left"
+  borderRadius: "22px",
+  padding: "24px",
+  boxShadow: "0 10px 30px rgba(0,0,0,0.08)"
 };
 
-const appHeaderStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "12px",
-  flexWrap: "nowrap",
-  marginBottom: "12px",
-  textAlign: "left"
-};
-
-const appIconStyle = {
-  width: "34px",
-  height: "34px",
-  borderRadius: "10px",
-  display: "grid",
-  placeItems: "center",
-  background: "#ffedd5",
-  color: "#c2410c",
-  flex: "0 0 auto"
-};
-
-const appTitleStyle = {
+const titleStyle = {
   margin: 0,
-  fontSize: "22px",
-  lineHeight: 1.1,
-  textAlign: "right",
-  flex: "0 0 auto",
-  whiteSpace: "nowrap"
+  fontSize: "32px"
 };
 
-const routeTypeRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "12px",
-  flexWrap: "wrap",
-  marginBottom: "12px"
+const subtitleStyle = {
+  color: "#666",
+  marginTop: "8px",
+  marginBottom: "24px",
+  lineHeight: 1.5
 };
 
-const compactLabelStyle = {
+const labelStyle = {
   display: "block",
-  color: "#444",
-  fontSize: "13px",
-  fontWeight: "700",
-  marginBottom: "5px"
+  marginBottom: "6px",
+  fontWeight: "600"
 };
 
-const routeTypeLabelStyle = {
-  color: "#444",
-  fontSize: "13px",
-  fontWeight: "700",
-  lineHeight: 1,
-  flex: "0 0 auto"
-};
-
-const segmentedControlStyle = {
-  display: "flex",
-  background: "#fff7ed",
-  border: "1px solid #fed7aa",
-  borderRadius: "12px",
-  padding: "3px",
-  flex: "1 1 220px"
-};
-
-const segmentButtonStyle = {
-  flex: 1,
-  border: "none",
-  borderRadius: "9px",
-  padding: "7px 9px",
-  background: "transparent",
-  color: "#444",
-  fontSize: "14px",
-  fontWeight: "700",
-  cursor: "pointer"
-};
-
-const segmentButtonActiveStyle = {
-  background: "black",
-  color: "white",
-  boxShadow: "0 0 0 1px #fb923c"
-};
-
-const locationRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "8px",
-  flexWrap: "wrap",
-  marginBottom: "10px"
-};
-
-const locationLabelStyle = {
-  color: "#444",
-  fontSize: "13px",
-  fontWeight: "700",
-  flex: "0 0 78px"
-};
-
-const locationInputWrapStyle = {
-  flex: "1 1 180px",
-  minWidth: "160px"
-};
-
-const locationFallbackInputStyle = {
+const inputStyle = {
   width: "100%",
   padding: "14px",
+  marginBottom: "18px",
   borderRadius: "12px",
-  border: "1px solid #e7d8c9",
+  border: "1px solid #d4d4d8",
   fontSize: "16px",
   boxSizing: "border-box"
-};
-
-const autocompleteContainerStyle = {
-  position: "relative",
-  textAlign: "left"
-};
-
-const iconButtonStyle = {
-  width: "42px",
-  height: "42px",
-  border: "1px solid #fed7aa",
-  borderRadius: "12px",
-  background: "#fff7ed",
-  color: "#c2410c",
-  display: "inline-grid",
-  placeItems: "center",
-  fontSize: "16px",
-  fontWeight: "700",
-  cursor: "pointer",
-  flex: "0 0 auto"
-};
-
-const controlGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-  gap: "10px",
-  marginBottom: "12px"
-};
-
-const fieldStyle = {
-  display: "block",
-  minWidth: 0
-};
-
-const compactInputStyle = {
-  width: "100%",
-  padding: "11px 12px",
-  borderRadius: "12px",
-  border: "1px solid #e7d8c9",
-  fontSize: "15px",
-  boxSizing: "border-box",
-  background: "white"
 };
 
 const textareaStyle = {
@@ -951,17 +617,17 @@ const textareaStyle = {
   minHeight: "180px",
   padding: "12px",
   borderRadius: "12px",
-  border: "1px solid #e7d8c9",
+  border: "1px solid #d4d4d8",
   fontSize: "14px",
   boxSizing: "border-box",
   marginBottom: "12px",
   fontFamily: "monospace"
 };
 
-const primaryButtonStyle = {
+const buttonStyle = {
   width: "100%",
   padding: "16px",
-  background: "#ea580c",
+  background: "black",
   color: "white",
   border: "none",
   borderRadius: "14px",
@@ -971,17 +637,12 @@ const primaryButtonStyle = {
   marginBottom: "14px"
 };
 
-const finalButtonStyle = {
-  ...primaryButtonStyle,
-  background: "black"
-};
-
 const secondaryButtonStyle = {
   width: "100%",
   padding: "12px",
-  background: "#f5f0eb",
+  background: "#e4e4e7",
   color: "black",
-  border: "1px solid #e7d8c9",
+  border: "none",
   borderRadius: "12px",
   fontSize: "15px",
   marginBottom: "14px",
@@ -991,9 +652,9 @@ const secondaryButtonStyle = {
 const sampleButtonStyle = {
   width: "100%",
   padding: "14px",
-  background: "#ffedd5",
-  color: "#9a3412",
-  border: "1px solid #fdba74",
+  background: "#fef3c7",
+  color: "#78350f",
+  border: "1px solid #f59e0b",
   borderRadius: "14px",
   fontSize: "15px",
   fontWeight: "700",
@@ -1002,8 +663,8 @@ const sampleButtonStyle = {
 };
 
 const panelStyle = {
-  background: "#fffaf5",
-  border: "1px solid #f1dfcf",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
   borderRadius: "16px",
   padding: "16px",
   marginTop: "18px",
@@ -1015,48 +676,32 @@ const panelTitleStyle = {
   fontSize: "20px"
 };
 
-const detailsStyle = {
-  marginTop: "4px",
-  marginBottom: "18px"
-};
-
-const summaryStyle = {
-  cursor: "pointer",
-  fontWeight: "700",
-  fontSize: "15px",
-  marginBottom: "12px"
-};
-
 const statusStyle = {
-  background: "#ecfdf3",
-  border: "1px solid #bbf7d0",
-  color: "#166534",
-  display: "inline-block",
-  padding: "4px 8px",
-  borderRadius: "999px",
-  marginBottom: "10px",
-  fontSize: "13px",
-  lineHeight: 1.2
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  padding: "10px",
+  borderRadius: "10px",
+  marginBottom: "18px",
+  fontSize: "14px"
 };
 
 const errorStyle = {
   background: "#fee2e2",
   border: "1px solid #ef4444",
   color: "#991b1b",
-  padding: "9px 10px",
+  padding: "12px",
   borderRadius: "12px",
-  marginBottom: "12px",
+  marginBottom: "16px",
   fontSize: "14px",
   fontWeight: "600"
 };
 
 const infoBoxStyle = {
-  background: "#fff7ed",
-  border: "1px solid #fed7aa",
-  color: "#9a3412",
-  padding: "9px 10px",
+  background: "#fef3c7",
+  border: "1px solid #f59e0b",
+  padding: "12px",
   borderRadius: "12px",
-  marginBottom: "12px",
+  marginBottom: "18px",
   fontSize: "14px"
 };
 
@@ -1064,8 +709,8 @@ const resultCardStyle = {
   marginTop: "28px",
   padding: "22px",
   borderRadius: "18px",
-  background: "#fffaf5",
-  border: "1px solid #f1dfcf"
+  background: "#f9fafb",
+  border: "1px solid #e4e4e7"
 };
 
 const resultHeaderStyle = {
@@ -1077,8 +722,8 @@ const resultHeaderStyle = {
 };
 
 const badgeStyle = {
-  background: "#ffedd5",
-  color: "#9a3412",
+  background: "#dbeafe",
+  color: "#1d4ed8",
   padding: "6px 10px",
   borderRadius: "999px",
   fontSize: "12px",
@@ -1102,7 +747,7 @@ const metaCardStyle = {
   background: "white",
   padding: "12px",
   borderRadius: "12px",
-  border: "1px solid #f1dfcf"
+  border: "1px solid #e4e4e7"
 };
 
 const metaLabelStyle = {
@@ -1115,7 +760,7 @@ const stopCardStyle = {
   background: "white",
   borderRadius: "12px",
   padding: "14px",
-  border: "1px solid #f1dfcf",
+  border: "1px solid #e4e4e7",
   marginBottom: "10px"
 };
 
@@ -1134,7 +779,7 @@ const mapButtonStyle = {
   textAlign: "center",
   marginTop: "24px",
   padding: "16px",
-  background: "black",
+  background: "#2563eb",
   color: "white",
   textDecoration: "none",
   borderRadius: "14px",
