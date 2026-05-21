@@ -11,6 +11,10 @@ function App() {
   const [energyLevel, setEnergyLevel] = useState("medium");
   const [routeStyle, setRouteStyle] = useState("scenic");
   const [locationStatus, setLocationStatus] = useState("");
+  const [chatGptPrompt, setChatGptPrompt] = useState("");
+  const [jsonInput, setJsonInput] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
+  const [promptStatus, setPromptStatus] = useState("");
 
   function useCurrentLocation() {
     if (!navigator.geolocation) {
@@ -34,86 +38,6 @@ function App() {
     );
   }
 
-  function getSampleWaypoints() {
-    if (routeType === "loop") {
-      if (routeStyle === "scenic") {
-        if (availableTime === "1 hour" || energyLevel === "low") {
-          return [
-            "Avenue Jean Médecin, Nice",
-            "Place Masséna, Nice",
-            "Boulevard Dubouchage, Nice"
-          ];
-        }
-
-        if (availableTime === "2 hours" || energyLevel === "medium") {
-          return [
-            "Avenue Jean Médecin, Nice",
-            "Place Masséna, Nice",
-            "Promenade du Paillon, Nice",
-            "Cours Saleya, Nice",
-            "Boulevard Dubouchage, Nice"
-          ];
-        }
-
-        return [
-          "Avenue Jean Médecin, Nice",
-          "Place Masséna, Nice",
-          "Promenade des Anglais, Nice",
-          "Castle Hill, Nice",
-          "Old Town Nice",
-          "Boulevard Dubouchage, Nice"
-        ];
-      }
-
-      if (routeStyle === "historic") {
-        return [
-          "Basilique Notre-Dame de Nice",
-          "Place Rossetti, Nice",
-          "Cours Saleya, Nice",
-          "Place Garibaldi, Nice"
-        ];
-      }
-
-      if (routeStyle === "food") {
-        return [
-          "Cours Saleya Market, Nice",
-          "Rue Bonaparte, Nice",
-          "Liberation Market, Nice"
-        ];
-      }
-
-      return [
-        "Place Masséna, Nice",
-        "Promenade du Paillon, Nice"
-      ];
-    }
-
-    if (routeStyle === "historic") {
-      return [
-        "Place Rossetti, Nice",
-        "Cours Saleya, Nice"
-      ];
-    }
-
-    if (routeStyle === "food") {
-      return [
-        "Cours Saleya Market, Nice",
-        "Place Rossetti, Nice"
-      ];
-    }
-
-    if (routeStyle === "efficient") {
-      return [
-        "Promenade du Paillon, Nice"
-      ];
-    }
-
-    return [
-      "Promenade du Paillon, Nice",
-      "Place Rossetti, Nice"
-    ];
-  }
-
   function validateForm() {
     if (!start.trim()) {
       return "Please enter a start location or use current location.";
@@ -126,7 +50,165 @@ function App() {
     return "";
   }
 
-  function generateRoutePlan() {
+  function buildGoogleMapsUrl(origin, destination, mode, waypoints) {
+    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+      origin
+    )}&destination=${encodeURIComponent(
+      destination
+    )}&travelmode=${mode}&waypoints=${encodeURIComponent(
+      waypoints.join("|")
+    )}`;
+  }
+
+  function generateChatGptPrompt() {
+    const validationError = validateForm();
+
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+
+    setErrorMessage("");
+    setCopyStatus("");
+
+    const destination = routeType === "loop" ? start : end;
+
+    const prompt = `
+You are a practical travel route planner.
+
+Create a Google Maps waypoint route based on the request below.
+
+Main goal:
+- Choose useful waypoint/shaping points, not just famous POIs.
+- Prioritize best walking/driving experience over shortest route.
+- For loop routes, use different outward and return corridors when possible.
+- Avoid overpacking the route.
+- Prefer exterior/scenic/street-level experience unless user asks otherwise.
+
+CRITICAL TIME CONSTRAINT:
+- Before returning JSON, mentally sanity-check whether Google Maps would likely show the route within the requested time.
+- If the route cannot fit, reduce the waypoint count until it can.
+TARGET TIME UTILIZATION:
+- Aim to use approximately 75% to 100% of the available time.
+- Slightly under the requested duration is acceptable.
+- Avoid routes that are dramatically shorter than the requested duration unless constraints require it.
+- The route should feel satisfying for the requested time budget.
+- For scenic and historic routes, prefer extending the experience with pleasant continuous corridors instead of adding excessive discrete stops.
+- For 1 hour walking routes, keep the route very compact, usually 0.5 to 2.5 miles depending on energy level and terrain.
+- For low-energy 1 hour walking loops, prefer 1 to 3 intermediate waypoints maximum.
+- Never create a walking route that would obviously take multiple hours when the requested time is 1 hour.
+- The full route must realistically fit within the requested available time.
+- Treat available time as a hard constraint, not a loose suggestion.
+- Include realistic time for walking/driving, crossings, parking friction, short pauses, viewpoints, and photo stops.
+- Prefer fewer high-value waypoints over too many stops.
+- If the requested route is unrealistic, choose a smaller route and explain that in notes.
+- Do not create a route that significantly exceeds the requested duration.
+WALKING TIME SCALE:
+- 1 hour walking: target about 45 to 65 minutes total.
+- 2 hours walking: target about 90 to 130 minutes total.
+- 3 hours walking: target about 135 to 190 minutes total.
+- Low energy should stay toward the lower end of the range.
+- High energy can use the upper end of the range.
+
+ENERGY LEVEL RULES:
+- Low energy:
+  - Keep route compact.
+  - Prefer mostly flat paths.
+  - Avoid steep hills, long stairs, difficult climbs, and excessive elevation gain.
+  - Use fewer waypoints.
+  - Favor easy-access viewpoints and comfortable paths.
+- Medium energy:
+  - Moderate distance is acceptable.
+  - Some gentle hills, stairs, or viewpoint climbs are acceptable.
+  - Avoid making the route feel strenuous unless the payoff is high.
+- High energy:
+  - Longer routes, steeper climbs, stairs, hill viewpoints, and more ambitious detours are acceptable.
+
+MODE-SPECIFIC RULES:
+- Walking:
+  - Prioritize pedestrian-friendly streets, waterfront paths, plazas, promenades, parks, and historic lanes.
+  - Avoid routing primarily along unpleasant high-traffic roads.
+  - For low energy, keep the walking route especially compact and mostly flat.
+- Driving:
+  - Prioritize scenic roads, viewpoints, pleasant approaches, and low-friction stops.
+  - Consider parking difficulty and avoid too many stop-and-park segments for low energy.
+
+LOOP ROUTE RULES:
+- Loop routes should return to the start.
+- Use different outward and return corridors when possible.
+- Keep loop routes geographically compact unless available time and energy are high.
+- For short low-energy loops, use fewer waypoints and avoid distant add-ons.
+WAYPOINT RULES:
+- The app already supplies origin and destination separately.
+- Do not include the start location in the waypoints array.
+- Do not include the end location in the waypoints array.
+- For loop routes, do not include the start/return location in the waypoints array.
+- The waypoints array must contain only intermediate shaping points between start and end.
+- Do not duplicate waypoints.
+- Do not include vague waypoints such as "return corridor" unless it is a real searchable Google Maps place, street, plaza, park, viewpoint, or intersection.
+
+Route request:
+{
+  "routeType": "${routeType}",
+  "start": "${start}",
+  "end": "${destination}",
+  "availableTime": "${availableTime}",
+  "travelMode": "${travelMode}",
+  "energyLevel": "${energyLevel}",
+  "routeStyle": "${routeStyle}"
+}
+
+Return ONLY valid JSON inside a single json code block.
+Do not include any explanation before or after the code block.
+
+{
+  "title": "Short route title",
+  "summary": "One or two sentence explanation of the route.",
+  "estimatedDuration": "Realistic total route duration estimate",
+  "distanceRisk": "low, medium, or high",
+  "energyFit": "good, borderline, or poor",
+  "waypoints": [
+    "Waypoint 1",
+    "Waypoint 2"
+  ],
+  "skipIfLate": [
+    "Waypoint or stop to skip if short on time"
+  ],
+  "addIfAhead": [
+    "Optional add-on if ahead of schedule"
+  ],
+  "notes": [
+    "Useful practical note"
+  ]
+}
+`.trim();
+
+    setChatGptPrompt(prompt);
+    setPromptStatus(`Prompt updated at ${new Date().toLocaleTimeString()}`);
+    setJsonInput("");
+    setRoutePlan(null);
+  }
+
+  async function copyPrompt() {
+    if (!chatGptPrompt) return;
+
+    try {
+      await navigator.clipboard.writeText(chatGptPrompt);
+      setCopyStatus("Prompt copied.");
+    } catch {
+      setCopyStatus("Could not copy automatically. Select and copy manually.");
+    }
+  }
+
+  function cleanJsonInput(input) {
+    return input
+      .replace(/^```json/i, "")
+      .replace(/^```/i, "")
+      .replace(/```$/i, "")
+      .trim();
+  }
+
+  function buildRouteFromJson() {
     const validationError = validateForm();
 
     if (validationError) {
@@ -135,28 +217,38 @@ function App() {
       return;
     }
 
-    setErrorMessage("");
+    let parsed;
 
-    const waypoints = getSampleWaypoints();
+    try {
+      parsed = JSON.parse(cleanJsonInput(jsonInput));
+    } catch {
+      setErrorMessage("Invalid JSON. Paste only the JSON response from ChatGPT.");
+      setRoutePlan(null);
+      return;
+    }
+
+    if (!parsed.title || !Array.isArray(parsed.waypoints)) {
+      setErrorMessage("JSON must include a title and a waypoints array.");
+      setRoutePlan(null);
+      return;
+    }
+
     const destination = routeType === "loop" ? start : end;
+    const waypoints = parsed.waypoints;
 
-    const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-      start
-    )}&destination=${encodeURIComponent(
-      destination
-    )}&travelmode=${travelMode}&waypoints=${encodeURIComponent(
-      waypoints.join("|")
-    )}`;
+    const googleMapsUrl = buildGoogleMapsUrl(
+      start,
+      destination,
+      travelMode,
+      waypoints
+    );
 
     const plan = {
-      title:
-        routeType === "loop"
-          ? "Scenic Loop Route"
-          : "Point-to-Point Route",
-
-      summary:
-        "Non-AI route generated from route type, time, energy level, and style.",
-
+      title: parsed.title,
+      summary: parsed.summary || "AI-assisted route generated from pasted JSON.",
+      estimatedDuration: parsed.estimatedDuration || "Not provided",
+      distanceRisk: parsed.distanceRisk || "Not provided",
+      energyFit: parsed.energyFit || "Not provided",
       request: {
         routeType,
         start,
@@ -166,39 +258,89 @@ function App() {
         energyLevel,
         routeStyle
       },
-
       stops: [
-        {
-          name: start,
-          type: "Start"
-        },
-
+        { name: start, type: "Start" },
         ...waypoints.map((point) => ({
           name: point,
           type: "Waypoint"
         })),
-
         {
           name: destination,
           type: routeType === "loop" ? "Return" : "End"
         }
       ],
-
+      skipIfLate: Array.isArray(parsed.skipIfLate) ? parsed.skipIfLate : [],
+      addIfAhead: Array.isArray(parsed.addIfAhead) ? parsed.addIfAhead : [],
+      notes: Array.isArray(parsed.notes) ? parsed.notes : [],
       googleMapsUrl
     };
 
+    setErrorMessage("");
+    setRoutePlan(plan);
+  }
+
+  function generateSampleRoutePlan() {
+    const validationError = validateForm();
+
+    if (validationError) {
+      setErrorMessage(validationError);
+      setRoutePlan(null);
+      return;
+    }
+
+    const destination = routeType === "loop" ? start : end;
+    const waypoints = ["Sample waypoint 1", "Sample waypoint 2"];
+
+    const googleMapsUrl = buildGoogleMapsUrl(
+      start,
+      destination,
+      travelMode,
+      waypoints
+    );
+
+    const plan = {
+      title: routeType === "loop" ? "Sample Loop Route" : "Sample Route",
+      summary: "Non-AI sample route using placeholder waypoints.",
+      estimatedDuration: "Sample only",
+      distanceRisk: "Sample only",
+      energyFit: "Sample only",
+      request: {
+        routeType,
+        start,
+        end: destination,
+        availableTime,
+        travelMode,
+        energyLevel,
+        routeStyle
+      },
+      stops: [
+        { name: start, type: "Start" },
+        ...waypoints.map((point) => ({
+          name: point,
+          type: "Waypoint"
+        })),
+        {
+          name: destination,
+          type: routeType === "loop" ? "Return" : "End"
+        }
+      ],
+      skipIfLate: [],
+      addIfAhead: [],
+      notes: ["This is the fallback sample engine."],
+      googleMapsUrl
+    };
+
+    setErrorMessage("");
     setRoutePlan(plan);
   }
 
   return (
     <div style={pageStyle}>
       <div style={cardStyle}>
-        <div style={{ marginBottom: "24px" }}>
-          <h1 style={titleStyle}>Route Planner</h1>
-          <p style={subtitleStyle}>
-            Smart route generation with shaping points and loop routing.
-          </p>
-        </div>
+        <h1 style={titleStyle}>Route Planner</h1>
+        <p style={subtitleStyle}>
+          Build a route prompt, paste ChatGPT JSON, and launch in Google Maps.
+        </p>
 
         <label style={labelStyle}>Route Type</label>
         <select
@@ -248,7 +390,7 @@ function App() {
 
         {routeType === "loop" && (
           <div style={infoBoxStyle}>
-            Loop mode attempts to create different outward and return corridors.
+            Loop mode returns to the start location.
           </div>
         )}
 
@@ -256,10 +398,7 @@ function App() {
         <select
           style={inputStyle}
           value={availableTime}
-          onChange={(e) => {
-            setAvailableTime(e.target.value);
-            setRoutePlan(null);
-          }}
+          onChange={(e) => setAvailableTime(e.target.value)}
         >
           <option value="1 hour">1 hour</option>
           <option value="2 hours">2 hours</option>
@@ -271,10 +410,7 @@ function App() {
         <select
           style={inputStyle}
           value={travelMode}
-          onChange={(e) => {
-            setTravelMode(e.target.value);
-            setRoutePlan(null);
-          }}
+          onChange={(e) => setTravelMode(e.target.value)}
         >
           <option value="walking">Walking</option>
           <option value="driving">Driving</option>
@@ -284,10 +420,7 @@ function App() {
         <select
           style={inputStyle}
           value={energyLevel}
-          onChange={(e) => {
-            setEnergyLevel(e.target.value);
-            setRoutePlan(null);
-          }}
+          onChange={(e) => setEnergyLevel(e.target.value)}
         >
           <option value="low">Low</option>
           <option value="medium">Medium</option>
@@ -298,10 +431,7 @@ function App() {
         <select
           style={inputStyle}
           value={routeStyle}
-          onChange={(e) => {
-            setRouteStyle(e.target.value);
-            setRoutePlan(null);
-          }}
+          onChange={(e) => setRouteStyle(e.target.value)}
         >
           <option value="scenic">Scenic</option>
           <option value="historic">Historic</option>
@@ -311,49 +441,112 @@ function App() {
 
         {errorMessage && <div style={errorStyle}>{errorMessage}</div>}
 
-        <button style={buttonStyle} onClick={generateRoutePlan}>
-          Generate Route
+        <button style={buttonStyle} onClick={generateChatGptPrompt}>
+          Generate ChatGPT Prompt
+        </button>
+
+        {chatGptPrompt && (
+          <div style={panelStyle}>
+            <h2 style={panelTitleStyle}>ChatGPT Prompt</h2>
+            {promptStatus && <div style={statusStyle}>{promptStatus}</div>}
+            <textarea style={textareaStyle} value={chatGptPrompt} readOnly />
+            <button style={secondaryButtonStyle} onClick={copyPrompt}>
+              Copy Prompt
+            </button>
+            {copyStatus && <div style={statusStyle}>{copyStatus}</div>}
+          </div>
+        )}
+
+        <div style={panelStyle}>
+          <h2 style={panelTitleStyle}>Paste ChatGPT Route JSON</h2>
+          <textarea
+            style={textareaStyle}
+            placeholder="Paste JSON response here"
+            value={jsonInput}
+            onChange={(e) => {
+              setJsonInput(e.target.value);
+              setErrorMessage("");
+            }}
+          />
+          <button style={buttonStyle} onClick={buildRouteFromJson}>
+            Build Route from JSON
+          </button>
+        </div>
+
+        <button style={sampleButtonStyle} onClick={generateSampleRoutePlan}>
+          Use Sample Route Instead
         </button>
 
         {routePlan && (
           <div style={resultCardStyle}>
             <div style={resultHeaderStyle}>
               <h2 style={{ margin: 0 }}>{routePlan.title}</h2>
-              <div style={badgeStyle}>Prototype</div>
+              <div style={badgeStyle}>
+                {routePlan.summary.includes("sample") ? "Sample" : "ChatGPT"}
+              </div>
             </div>
 
             <p style={resultSummaryStyle}>{routePlan.summary}</p>
 
             <div style={metaGridStyle}>
               <div style={metaCardStyle}>
-                <div style={metaLabelStyle}>Time</div>
+                <div style={metaLabelStyle}>Requested Time</div>
                 <div>{routePlan.request.availableTime}</div>
               </div>
-
               <div style={metaCardStyle}>
-                <div style={metaLabelStyle}>Mode</div>
-                <div>{routePlan.request.travelMode}</div>
+                <div style={metaLabelStyle}>Estimated Duration</div>
+                <div>{routePlan.estimatedDuration}</div>
               </div>
-
               <div style={metaCardStyle}>
-                <div style={metaLabelStyle}>Energy</div>
-                <div>{routePlan.request.energyLevel}</div>
+                <div style={metaLabelStyle}>Distance Risk</div>
+                <div>{routePlan.distanceRisk}</div>
               </div>
-
               <div style={metaCardStyle}>
-                <div style={metaLabelStyle}>Style</div>
-                <div>{routePlan.request.routeStyle}</div>
+                <div style={metaLabelStyle}>Energy Fit</div>
+                <div>{routePlan.energyFit}</div>
               </div>
             </div>
 
-            <h3 style={sectionTitleStyle}>Stops</h3>
-
+            <h3>Stops</h3>
             {routePlan.stops.map((stop, index) => (
               <div key={index} style={stopCardStyle}>
                 <div style={stopTypeStyle}>{stop.type}</div>
                 <div style={stopNameStyle}>{stop.name}</div>
               </div>
             ))}
+
+            {routePlan.skipIfLate.length > 0 && (
+              <>
+                <h3>Skip if late</h3>
+                <ul>
+                  {routePlan.skipIfLate.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {routePlan.addIfAhead.length > 0 && (
+              <>
+                <h3>Add if ahead</h3>
+                <ul>
+                  {routePlan.addIfAhead.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {routePlan.notes.length > 0 && (
+              <>
+                <h3>Notes</h3>
+                <ul>
+                  {routePlan.notes.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </>
+            )}
 
             <a
               href={routePlan.googleMapsUrl}
@@ -378,7 +571,7 @@ const pageStyle = {
 };
 
 const cardStyle = {
-  maxWidth: "520px",
+  maxWidth: "540px",
   margin: "0 auto",
   background: "white",
   borderRadius: "22px",
@@ -394,7 +587,7 @@ const titleStyle = {
 const subtitleStyle = {
   color: "#666",
   marginTop: "8px",
-  marginBottom: 0,
+  marginBottom: "24px",
   lineHeight: 1.5
 };
 
@@ -414,6 +607,18 @@ const inputStyle = {
   boxSizing: "border-box"
 };
 
+const textareaStyle = {
+  width: "100%",
+  minHeight: "180px",
+  padding: "12px",
+  borderRadius: "12px",
+  border: "1px solid #d4d4d8",
+  fontSize: "14px",
+  boxSizing: "border-box",
+  marginBottom: "12px",
+  fontFamily: "monospace"
+};
+
 const buttonStyle = {
   width: "100%",
   padding: "16px",
@@ -423,7 +628,8 @@ const buttonStyle = {
   borderRadius: "14px",
   fontSize: "16px",
   fontWeight: "700",
-  cursor: "pointer"
+  cursor: "pointer",
+  marginBottom: "14px"
 };
 
 const secondaryButtonStyle = {
@@ -436,6 +642,33 @@ const secondaryButtonStyle = {
   fontSize: "15px",
   marginBottom: "14px",
   cursor: "pointer"
+};
+
+const sampleButtonStyle = {
+  width: "100%",
+  padding: "14px",
+  background: "#fef3c7",
+  color: "#78350f",
+  border: "1px solid #f59e0b",
+  borderRadius: "14px",
+  fontSize: "15px",
+  fontWeight: "700",
+  cursor: "pointer",
+  marginBottom: "14px"
+};
+
+const panelStyle = {
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  borderRadius: "16px",
+  padding: "16px",
+  marginTop: "18px",
+  marginBottom: "18px"
+};
+
+const panelTitleStyle = {
+  marginTop: 0,
+  fontSize: "20px"
 };
 
 const statusStyle = {
@@ -471,7 +704,7 @@ const resultCardStyle = {
   marginTop: "28px",
   padding: "22px",
   borderRadius: "18px",
-  background: "#fafafa",
+  background: "#f9fafb",
   border: "1px solid #e4e4e7"
 };
 
@@ -479,7 +712,8 @@ const resultHeaderStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  marginBottom: "12px"
+  marginBottom: "12px",
+  gap: "12px"
 };
 
 const badgeStyle = {
@@ -515,10 +749,6 @@ const metaLabelStyle = {
   fontSize: "12px",
   color: "#666",
   marginBottom: "4px"
-};
-
-const sectionTitleStyle = {
-  marginBottom: "12px"
 };
 
 const stopCardStyle = {
