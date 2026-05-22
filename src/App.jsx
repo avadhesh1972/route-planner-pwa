@@ -658,9 +658,23 @@ Do not include any explanation before or after the code block.
 
         {copyStatus && <div style={statusStyle}>{copyStatus}</div>}
 
-        <button style={secondaryButtonStyle} onClick={pasteJsonFromClipboard}>
-          Step 3: Paste AI JSON from Clipboard
-        </button>
+        <div style={jsonPasteBoxStyle}>
+          <div style={stepLabelStyle}>Step 3</div>
+          <label style={compactLabelStyle} htmlFor="ai-json-input">
+            Paste AI JSON
+          </label>
+          <textarea
+            id="ai-json-input"
+            style={jsonTextareaStyle}
+            placeholder="Paste AI JSON here"
+            value={jsonInput}
+            rows={3}
+            onChange={(e) => {
+              setJsonInput(e.target.value);
+              setErrorMessage("");
+            }}
+          />
+        </div>
 
         {jsonStatus && <div style={statusStyle}>{jsonStatus}</div>}
 
@@ -673,16 +687,9 @@ Do not include any explanation before or after the code block.
           <div style={panelStyle}>
             <h2 style={panelTitleStyle}>Generated AI Prompt</h2>
             <textarea style={textareaStyle} value={chatGptPrompt} readOnly />
-            <h2 style={panelTitleStyle}>Pasted AI JSON</h2>
-            <textarea
-              style={textareaStyle}
-              placeholder="Paste AI JSON response here"
-              value={jsonInput}
-              onChange={(e) => {
-                setJsonInput(e.target.value);
-                setErrorMessage("");
-              }}
-            />
+            <button style={secondaryButtonStyle} onClick={pasteJsonFromClipboard}>
+              Paste AI JSON from Clipboard
+            </button>
           </div>
         </details>
 
@@ -956,6 +963,26 @@ const textareaStyle = {
   boxSizing: "border-box",
   marginBottom: "12px",
   fontFamily: "monospace"
+};
+
+const jsonPasteBoxStyle = {
+  marginBottom: "14px"
+};
+
+const stepLabelStyle = {
+  color: "#9a3412",
+  fontSize: "12px",
+  fontWeight: "700",
+  lineHeight: 1,
+  marginBottom: "4px"
+};
+
+const jsonTextareaStyle = {
+  ...textareaStyle,
+  minHeight: "82px",
+  maxHeight: "180px",
+  resize: "vertical",
+  marginBottom: 0
 };
 
 const primaryButtonStyle = {
