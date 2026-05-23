@@ -99,6 +99,8 @@ function App() {
   const [routeType, setRouteType] = useState("point");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [includePoints, setIncludePoints] = useState([""]);
+  const [excludePoints, setExcludePoints] = useState([""]);
   const [availableTime, setAvailableTime] = useState("2 hours");
   const [travelMode, setTravelMode] = useState("walking");
   const [energyLevel, setEnergyLevel] = useState("medium");
@@ -197,6 +199,24 @@ function App() {
     }
 
     return "";
+  }
+
+  function parsePoints(items) {
+    return items
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function updatePoint(list, setList, index, value) {
+    setList(list.map((item, i) => (i === index ? value : item)));
+  }
+
+  function removePoint(list, setList, index) {
+    setList(list.filter((_, i) => i !== index));
+  }
+
+  function addPoint(setList) {
+    setList((prev) => [...prev, ""]);
   }
 
   function buildGoogleMapsUrl(origin, destination, mode, waypoints) {
@@ -310,7 +330,9 @@ Route request:
   "availableTime": "${availableTime}",
   "travelMode": "${travelMode}",
   "energyLevel": "${energyLevel}",
-  "routeStyle": "${routeStyle}"
+  "routeStyle": "${routeStyle}",
+  "includePoints": ${JSON.stringify(parsePoints(includePoints))},
+  "excludePoints": ${JSON.stringify(parsePoints(excludePoints))}
 }
 
 Return ONLY valid JSON inside a single json code block.
@@ -338,7 +360,16 @@ Do not include any explanation before or after the code block.
 }
 `.trim();
 
-    setChatGptPrompt(prompt);
+    const includeList = parsePoints(includePoints);
+    const excludeList = parsePoints(excludePoints);
+    const includeSection = includeList.length
+      ? `\nInclude these locations if possible:\n- ${includeList.join("\n- ")}`
+      : "";
+    const excludeSection = excludeList.length
+      ? `\nAvoid these locations if possible:\n- ${excludeList.join("\n- ")}`
+      : "";
+
+    setChatGptPrompt(`${prompt}${includeSection}${excludeSection}`.trim());
     setPromptStatus("Prompt ready.");
     setJsonInput("");
     setRoutePlan(null);
@@ -412,6 +443,8 @@ Do not include any explanation before or after the code block.
       waypoints
     );
 
+    const includeList = parsePoints(includePoints);
+    const excludeList = parsePoints(excludePoints);
     const plan = {
       title: parsed.title,
       summary: parsed.summary || "AI-assisted route generated from pasted JSON.",
@@ -425,7 +458,9 @@ Do not include any explanation before or after the code block.
         availableTime,
         travelMode,
         energyLevel,
-        routeStyle
+        routeStyle,
+        includePoints: includeList,
+        excludePoints: excludeList
       },
       stops: [
         { name: start, type: "Start" },
@@ -480,7 +515,9 @@ Do not include any explanation before or after the code block.
         availableTime,
         travelMode,
         energyLevel,
-        routeStyle
+        routeStyle,
+        includePoints: parsePoints(includePoints),
+        excludePoints: parsePoints(excludePoints)
       },
       stops: [
         { name: start, type: "Start" },
@@ -544,7 +581,7 @@ Do not include any explanation before or after the code block.
         </div>
 
         <div style={locationRowStyle}>
-          <label style={locationLabelStyle}>Start Point</label>
+          <label style={locationLabelStyle}>Start</label>
           <div style={locationInputWrapStyle}>
             <LocationAutocomplete
               placeholder="Enter start location"
@@ -567,7 +604,7 @@ Do not include any explanation before or after the code block.
 
         {routeType === "point" && (
           <div style={locationRowStyle}>
-            <label style={locationLabelStyle}>End Point</label>
+            <label style={locationLabelStyle}>End</label>
             <div style={locationInputWrapStyle}>
               <LocationAutocomplete
                 placeholder="Enter destination"
@@ -580,6 +617,98 @@ Do not include any explanation before or after the code block.
             </div>
           </div>
         )}
+
+        <div style={locationRowStyle}>
+          <label style={locationLabelStyle}>Include</label>
+          <div style={locationInputWrapStyle}>
+            <LocationAutocomplete
+              placeholder="Enter include location"
+              value={includePoints[0]}
+              onChange={(nextValue) => {
+                updatePoint(includePoints, setIncludePoints, 0, nextValue);
+                setErrorMessage("");
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            style={iconButtonStyle}
+            onClick={() => addPoint(setIncludePoints)}
+            title="Add include location"
+          >
+            +
+          </button>
+        </div>
+        {includePoints.slice(1).map((point, index) => (
+          <div key={`include-${index + 1}`} style={locationRowStyle}>
+            <div style={{ flex: "0 0 78px" }} />
+            <div style={locationInputWrapStyle}>
+              <LocationAutocomplete
+                placeholder="Enter include location"
+                value={point}
+                onChange={(nextValue) => {
+                  updatePoint(includePoints, setIncludePoints, index + 1, nextValue);
+                  setErrorMessage("");
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              style={iconButtonStyle}
+              onClick={() => removePoint(includePoints, setIncludePoints, index + 1)}
+              aria-label="Remove include location"
+              title="Remove include location"
+            >
+              −
+            </button>
+          </div>
+        ))}
+
+        <div style={locationRowStyle}>
+          <label style={locationLabelStyle}>Exclude</label>
+          <div style={locationInputWrapStyle}>
+            <LocationAutocomplete
+              placeholder="Enter exclude location"
+              value={excludePoints[0]}
+              onChange={(nextValue) => {
+                updatePoint(excludePoints, setExcludePoints, 0, nextValue);
+                setErrorMessage("");
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            style={iconButtonStyle}
+            onClick={() => addPoint(setExcludePoints)}
+            title="Add exclude location"
+          >
+            +
+          </button>
+        </div>
+        {excludePoints.slice(1).map((point, index) => (
+          <div key={`exclude-${index + 1}`} style={locationRowStyle}>
+            <div style={{ flex: "0 0 78px" }} />
+            <div style={locationInputWrapStyle}>
+              <LocationAutocomplete
+                placeholder="Enter exclude location"
+                value={point}
+                onChange={(nextValue) => {
+                  updatePoint(excludePoints, setExcludePoints, index + 1, nextValue);
+                  setErrorMessage("");
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              style={iconButtonStyle}
+              onClick={() => removePoint(excludePoints, setExcludePoints, index + 1)}
+              aria-label="Remove exclude location"
+              title="Remove exclude location"
+            >
+              −
+            </button>
+          </div>
+        ))}
 
         {routeType === "loop" && (
           <div style={infoBoxStyle}>
@@ -888,6 +1017,14 @@ const locationRowStyle = {
   gap: "8px",
   flexWrap: "wrap",
   marginBottom: "10px"
+};
+
+const listSectionHeaderStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "10px",
+  marginBottom: "8px"
 };
 
 const locationLabelStyle = {
