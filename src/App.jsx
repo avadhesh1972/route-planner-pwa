@@ -268,7 +268,11 @@ OPENING HOURS AND AVAILABILITY:
 - Do not make a closed or likely closed venue the main anchor unless it is still valuable as an exterior/scenic pass-by.
 - If exact opening hours are uncertain, prefer public streets, promenades, plazas, waterfronts, parks, viewpoints, exterior landmarks, or other places that are usually accessible.
 - For food-friendly routes, choose meal/coffee stops that are likely open for the relevant time of day.
-- If an included location may be closed, keep it only if appropriate and add a practical note or fallback.
+- Treat user-provided includePoints as user-priority stops, not optional AI suggestions.
+- Optimize route order to arrive at includePoints when they are likely open whenever possible.
+- Do not place a user-provided includePoint in skipIfClosed only because it may be closed.
+- If an includePoint may be closed, keep it in the route when reasonable and add a note explaining whether it is suitable as an exterior/pass-by/drive-by stop.
+- For closed-risk includePoints, suggest nearby or similar alternatives in notes or addIfAhead, but do not silently replace the requested stop.
 - Mention closed-hours risk, uncertainty, or exterior-only use in notes.
 
 CRITICAL TIME CONSTRAINT:
@@ -369,7 +373,7 @@ Do not include any explanation before or after the code block.
     "Waypoint or stop to skip if short on time"
   ],
   "skipIfClosed": [
-    "Waypoint or stop to skip if closed or inaccessible"
+    "Optional AI-suggested waypoint to skip if closed or inaccessible; do not list user-provided includePoints here unless clearly unsafe or impossible"
   ],
   "addIfAhead": [
     "Optional add-on if ahead of schedule"
@@ -383,7 +387,7 @@ Do not include any explanation before or after the code block.
     const includeList = parsePoints(includePoints);
     const excludeList = parsePoints(excludePoints);
     const includeSection = includeList.length
-      ? `\nInclude these locations if possible:\n- ${includeList.join("\n- ")}`
+      ? `\nUser-provided includePoints to preserve when reasonable. Optimize arrival timing around opening hours, but do not skip these only because they may be closed:\n- ${includeList.join("\n- ")}`
       : "";
     const excludeSection = excludeList.length
       ? `\nAvoid these locations if possible:\n- ${excludeList.join("\n- ")}`
