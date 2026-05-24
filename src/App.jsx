@@ -189,6 +189,13 @@ function App() {
     );
   }
 
+  function swapStartEnd() {
+    setStart(end);
+    setEnd(start);
+    setRoutePlan(null);
+    setErrorMessage("");
+  }
+
   function validateForm() {
     if (!start.trim()) {
       return "Please enter a start location or use current location.";
@@ -254,6 +261,15 @@ Main goal:
 - For loop routes, use different outward and return corridors when possible.
 - Avoid overpacking the route.
 - Prefer exterior/scenic/street-level experience unless user asks otherwise.
+
+OPENING HOURS AND AVAILABILITY:
+- Optimize the route so key stops are likely open during the planned route window.
+- Treat opening hours as important for museums, churches/temples, gardens, markets, restaurants, cafes, ticketed attractions, viewpoints with gates, and any indoor or managed venue.
+- Do not make a closed or likely closed venue the main anchor unless it is still valuable as an exterior/scenic pass-by.
+- If exact opening hours are uncertain, prefer public streets, promenades, plazas, waterfronts, parks, viewpoints, exterior landmarks, or other places that are usually accessible.
+- For food-friendly routes, choose meal/coffee stops that are likely open for the relevant time of day.
+- If an included location may be closed, keep it only if appropriate and add a practical note or fallback.
+- Mention closed-hours risk, uncertainty, or exterior-only use in notes.
 
 CRITICAL TIME CONSTRAINT:
 - Before returning JSON, mentally sanity-check whether Google Maps would likely show the route within the requested time.
@@ -344,12 +360,16 @@ Do not include any explanation before or after the code block.
   "estimatedDuration": "Realistic total route duration estimate",
   "distanceRisk": "low, medium, or high",
   "energyFit": "good, borderline, or poor",
+  "openingHoursFit": "good, uncertain, exterior-only, or poor",
   "waypoints": [
   "Full searchable waypoint name, locality, city, state/region, country",
   "Another full searchable waypoint name, locality, city, state/region, country"
   ],
   "skipIfLate": [
     "Waypoint or stop to skip if short on time"
+  ],
+  "skipIfClosed": [
+    "Waypoint or stop to skip if closed or inaccessible"
   ],
   "addIfAhead": [
     "Optional add-on if ahead of schedule"
@@ -615,6 +635,15 @@ Do not include any explanation before or after the code block.
                 }}
               />
             </div>
+            <button
+              type="button"
+              style={iconButtonStyle}
+              onClick={swapStartEnd}
+              aria-label="Swap start and end"
+              title="Swap start and end"
+            >
+              ⇅
+            </button>
           </div>
         )}
 
@@ -1017,14 +1046,6 @@ const locationRowStyle = {
   gap: "8px",
   flexWrap: "wrap",
   marginBottom: "10px"
-};
-
-const listSectionHeaderStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "10px",
-  marginBottom: "8px"
 };
 
 const locationLabelStyle = {
